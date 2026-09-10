@@ -1,0 +1,24 @@
+[Unit]
+Description=LumaField FastAPI service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lumafield
+Group=lumafield
+WorkingDirectory=/opt/lumafield/current
+EnvironmentFile=/etc/lumafield.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/lumafield/venv/bin/uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lumafield
+
+[Install]
+WantedBy=multi-user.target

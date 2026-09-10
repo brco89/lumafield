@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "name": "LumaField — public lighting reconciliation",
+      "path": "agent/knowledge-base.md",
+      "usage_mode": "auto"
+    },
+    {
+      "name": "LumaField — field technician guide",
+      "path": "agent/knowledge-base-field-guide.md",
+      "usage_mode": "auto"
+    }
+  ],
+  "retired_documents": [
+    "LumaField — incident and dispatch policy"
+  ]
+}

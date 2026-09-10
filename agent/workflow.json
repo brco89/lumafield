@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "name": "Field asset reconciliation",
+  "prevent_subagent_loops": true,
+  "nodes": {
+    "start_node": {
+      "type": "start",
+      "position": {"x": 0, "y": 180},
+      "edge_order": ["start_to_identify"]
+    },
+    "identify_node": {
+      "type": "override_agent",
+      "label": "01 IDENTIFY",
+      "position": {"x": 220, "y": 180},
+      "entry_behavior": "wait_for_user",
+      "additional_prompt": "STAGE: IDENTIFY. Distinguish three intents. SPECIFIC POLE QUESTION: when the user asks what happened to a named pole or asks about its registry, work order, queue status or latest outcome, call get_asset_record with its digits; answer only about that pole. Start with the latest inspection when one exists: summarize its field observation, evidence, reconciliation/outcome and external operation using only returned facts, then add persistent registry or work-order context only when relevant. If latest_inspection is null, say no inspection has been recorded and describe only the persistent asset record. Never start an inspection for a question. PORTFOLIO QUESTION: when the user asks an aggregate question about all inspections, call get_inspection_summary and answer with the exact returned number and scope; never estimate. NEW INSPECTION ACTION: when the user says 'start a new inspection' or equivalent, ask only 'What is the pole number?'. Only digits supplied in response to that pending action trigger start_inspection, without operator_classification or operator_utterance. Never treat a count or a pole mentioned inside a question as an instruction to start. Never ask what is installed before start_inspection returns the utility record. IDENTITY CORRECTION: if start_inspection returns identity_status UNKNOWN with VERIFY_FIXTURE, retain its inspection_id and revision, say the number was not found, and ask the technician to repeat the pole number. Corrected digits must call start_inspection with the corrected pole_id plus supersedes_inspection_id and expected_previous_revision from that unknown attempt. Do not ask whether to continue, do not call the corrected number without those supersede fields, and remain in IDENTIFY until identity_status is FOUND.",
+      "tool_names": ["start_inspection", "get_inspection_summary", "get_asset_record"],
+      "edge_order": ["identify_to_record"]
+    },
+    "record_node": {
+      "type": "override_agent",
+      "label": "02–03 RECORD + FIELD",
+      "position": {"x": 470, "y": 180},
+      "entry_behavior": "generate_immediately",
+      "additional_prompt": "STAGES: UTILITY RECORD AND FIELD OBSERVATION. Immediately after start_inspection succeeds, respond from its tool result without retrieving knowledge. In one short turn, state technology, lamp power, auxiliary power and total registered load; mention a completed modernization order with pending registry sync when present. Then ask exactly: 'Does the installed luminaire appear to be LED, legacy, or are you unsure?' Do not omit the utility-record summary. After the user answers, preserve their exact words and call record_field_observation with LED, LEGACY or UNSURE. If the user asks a contextual question instead of answering, respond briefly from authoritative tool results or the attached field guide, then repeat the pending bounded question without advancing. The field report does not overwrite the utility record.",
+      "knowledge_base_names": ["LumaField — field technician guide"],
+      "tool_names": ["record_field_observation"],
+      "edge_order": ["record_to_evidence"]
+    },
+    "evidence_node": {
+      "type": "override_agent",
+      "label": "04 EVIDENCE",
+      "position": {"x": 970, "y": 180},
+      "entry_behavior": "generate_immediately",
+      "additional_prompt": "STAGE: EVIDENCE. First ask once for a general photo of the whole luminaire and then wait silently. After upload, a structured contextual update with event EVIDENCE_UPLOADED supplies the evidence ID and a neutral 'Photo attached.' turn wakes the conversation. Use the identifiers from the latest structured context to call assess_evidence immediately. Do not treat the neutral turn as a request for another photo and never ask the user for an opaque ID. Follow the returned message. If technology diverges and power is unverified, request a label/model photo once and wait silently. Label power complements the general photo; never infer watts. If the technician says 'I don't know', cannot see a label, says there is no label, or cannot safely provide that photo, accept the answer immediately and call record_operator_response with kind DECLINE_RETAKE, no assessment_id, their exact words, and the current revision. Tell them not to approach, climb, open or touch the equipment. Keep power unverified, do not ask for the label again, and continue instead of ending the conversation. Advance after assess_evidence, record_operator_response or get_inspection_state returns RECONCILE as an allowed action.",
+      "knowledge_base_names": ["LumaField — public lighting reconciliation", "LumaField — field technician guide"],
+      "tool_names": ["assess_evidence", "get_inspection_state", "record_operator_response"],
+      "edge_order": ["evidence_to_reconcile"]
+    },
+    "reconcile_node": {
+      "type": "tool",
+      "position": {"x": 1230, "y": 180},
+      "tool_names": ["05_RECONCILE"],
+      "edge_order": ["reconcile_to_resolve", "reconcile_to_recovery"]
+    },
+    "resolve_node": {
+      "type": "override_agent",
+      "label": "06 RESOLVE",
+      "position": {"x": 1490, "y": 180},
+      "entry_behavior": "generate_immediately",
+      "additional_prompt": "STAGE: RESOLVE. Lead with the reconciliation status and compare utility record with field evidence. Never lead with 'the AI detected'. If PREPARE_ACTION is allowed, call it without another permission question, read the exact effect, then ask one explicit confirmation immediately before confirm_action. If, before confirm_action, the technician explicitly corrects their own observation and the correction matches a sufficient stored visual assessment—for example, 'Actually, I made a mistake. It is legacy, not LED'—call record_operator_response with kind ACCEPT_VISUAL, the supporting assessment ID, their exact words and the current revision. The tool withdraws the pending proposal, recalculates reconciliation and returns the updated decision; continue from that result and never confirm the old proposal. Never claim external success without a returned external reference. After SUCCEEDED with a returned reference, state that the request was created and that the external reference is available in the audit record; never read or spell the opaque reference aloud unless the technician explicitly asks. Whenever the inspection reaches a terminal state—including external success, declined action, local completion or completed review routing—briefly state the final outcome and end the turn with exactly: 'What would you like to do next? I can start another inspection or answer a question about inspection history.' Keep the conversation open and wait; never choose, query or end on the technician's behalf. After completion, answer portfolio questions only by calling get_inspection_summary. For a specific-pole question, call get_asset_record and summarize the returned latest inspection before adding relevant persistent registry context. If the user says 'start a new inspection' or asks to inspect another pole, transition to the dedicated next-inspection stage; that stage will ask for the pole number immediately. End only when the user clearly says they are finished.",
+      "knowledge_base_names": ["LumaField — public lighting reconciliation", "LumaField — field technician guide"],
+      "tool_names": ["prepare_action", "confirm_action", "record_operator_response", "get_operation_status", "get_inspection_summary", "get_asset_record"],
+      "edge_order": ["resolve_to_next_inspection", "resolve_to_end"]
+    },
+    "next_inspection_node": {
+      "type": "override_agent",
+      "label": "01 IDENTIFY — NEXT",
+      "position": {"x": 470, "y": 390},
+      "entry_behavior": "generate_immediately",
+      "additional_prompt": "STAGE: IDENTIFY THE NEXT POLE AFTER A COMPLETED INSPECTION. Immediately on entry, ask exactly: 'What is the pole number?'. Do not repeat the previous outcome or ask any other question. When the technician supplies digits, call start_inspection immediately with that pole_id and no field observation. If start_inspection returns identity_status UNKNOWN with VERIFY_FIXTURE, retain its inspection_id and revision, say the number was not found, and ask the technician to repeat the pole number. Corrected digits must call start_inspection with the corrected pole_id plus supersedes_inspection_id and expected_previous_revision from that unknown attempt. Remain here until identity_status is FOUND.",
+      "tool_names": ["start_inspection"],
+      "edge_order": ["next_inspection_to_record"]
+    },
+    "recovery_node": {
+      "type": "override_agent",
+      "label": "RECOVER STATE",
+      "position": {"x": 1230, "y": 390},
+      "entry_behavior": "generate_immediately",
+      "additional_prompt": "RECOVERY ONLY. Explain briefly that the authoritative state will be recovered. Call get_inspection_state, then call 05_RECONCILE only if the returned allowed action is RECONCILE. Do not invent success or retry an external mutation.",
+      "tool_names": ["get_inspection_state", "05_RECONCILE"],
+      "edge_order": ["recovery_to_resolve"]
+    },
+    "end_node": {
+      "type": "end",
+      "position": {"x": 1740, "y": 310},
+      "edge_order": []
+    }
+  },
+  "edges": {
+    "start_to_identify": {
+      "source": "start_node",
+      "target": "identify_node",
+      "forward_condition": {"type": "unconditional", "label": "Start"}
+    },
+    "identify_to_record": {
+      "source": "identify_node",
+      "target": "record_node",
+      "forward_condition": {"type": "llm", "label": "Asset found", "condition": "The start_inspection tool returned identity_status FOUND and allowed_next_actions contains RECORD_FIELD_OBSERVATION."}
+    },
+    "record_to_evidence": {
+      "source": "record_node",
+      "target": "evidence_node",
+      "forward_condition": {"type": "llm", "label": "Observation saved", "condition": "The record_field_observation tool succeeded and allowed_next_actions contains UPLOAD_EVIDENCE."}
+    },
+    "evidence_to_reconcile": {
+      "source": "evidence_node",
+      "target": "reconcile_node",
+      "forward_condition": {"type": "llm", "label": "Evidence ready", "condition": "The latest assess_evidence, record_operator_response or get_inspection_state result contains RECONCILE in allowed_next_actions."}
+    },
+    "reconcile_to_resolve": {
+      "source": "reconcile_node",
+      "target": "resolve_node",
+      "forward_condition": {"type": "result", "label": "Reconciled", "successful": true}
+    },
+    "reconcile_to_recovery": {
+      "source": "reconcile_node",
+      "target": "recovery_node",
+      "forward_condition": {"type": "result", "label": "Recover", "successful": false}
+    },
+    "recovery_to_resolve": {
+      "source": "recovery_node",
+      "target": "resolve_node",
+      "forward_condition": {"type": "llm", "label": "State recovered", "condition": "The authoritative inspection state now contains a reconciliation decision or a completed outcome."}
+    },
+    "resolve_to_next_inspection": {
+      "source": "resolve_node",
+      "target": "next_inspection_node",
+      "forward_condition": {"type": "llm", "label": "Next pole", "condition": "The current inspection is complete and the user clearly asks to inspect another pole."}
+    },
+    "next_inspection_to_record": {
+      "source": "next_inspection_node",
+      "target": "record_node",
+      "forward_condition": {"type": "llm", "label": "Next asset found", "condition": "The start_inspection tool returned identity_status FOUND and allowed_next_actions contains RECORD_FIELD_OBSERVATION."}
+    },
+    "resolve_to_end": {
+      "source": "resolve_node",
+      "target": "end_node",
+      "forward_condition": {"type": "llm", "label": "Finish", "condition": "The current inspection is complete and the user clearly says they are finished or asks to end the conversation."}
+    }
+  }
+}

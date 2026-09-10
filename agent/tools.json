@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "base_url_env": "LUMAFIELD_PUBLIC_API_URL",
+  "headers": {
+    "X-Agent-Key": "workspace_secret:LumaField Agent Tool Key",
+    "X-Tool-Session": "secret__lumafield_session",
+    "X-Conversation-Id": "system__conversation_id"
+  },
+  "tools": [
+    {
+      "name": "start_inspection",
+      "method": "POST",
+      "path": "/v1/inspections/start",
+      "description": "Starts a field verification from a pole number and returns the complete utility record. Immediately speak its technology and registered load before asking for any field claim.",
+      "parameters": {
+        "request_id": {"type": "string", "description": "Unique idempotency key for this start request."},
+        "pole_id": {"type": "string", "description": "Pole number spoken by the inspector, using digits only, for example 18427."},
+        "operator_classification": {"type": "string", "enum": ["LED", "LEGACY", "UNSURE"], "nullable": true},
+        "operator_utterance": {"type": "string", "description": "Compatibility-only initial observation; omit in the reconciliation flow.", "nullable": true},
+        "fixture_selector": {"type": "string", "nullable": true},
+        "supersedes_inspection_id": {"type": "string", "nullable": true},
+        "expected_previous_revision": {"type": "integer", "nullable": true}
+      }
+    },
+    {
+      "name": "get_inspection_summary",
+      "method": "GET",
+      "path": "/v1/analytics/inspections",
+      "description": "Returns deterministic totals calculated from every persisted inspection. Use it for questions about inspection history, discrepancies, reviews, verified load deltas or external requests; never estimate a portfolio answer from the conversation.",
+      "parameters": {}
+    },
+    {
+      "name": "get_asset_record",
+      "method": "POST",
+      "path": "/v1/asset-records/lookup",
+      "description": "Returns the authoritative dossier and the complete latest inspection projection for one pole without starting or changing an inspection. Use it for questions about a specific pole, its registry, work order, field observation, evidence, reconciliation, external operation, queue state or latest outcome.",
+      "parameters": {
+        "pole_id": {"type": "string", "description": "Pole number mentioned by the user, using digits only, for example 18429."}
+      }
+    },
+    {
+      "name": "record_field_observation",
+      "method": "POST",
+      "path": "/v1/inspections/{inspection_id}/field-observation",
+      "description": "Records what the inspector reports after the utility record has been presented. It never overwrites registry data.",
+      "parameters": {
+        "inspection_id": {"type": "string", "description": "Opaque inspection ID returned by start_inspection."},
+        "request_id": {"type": "string", "description": "Unique idempotency key for this field observation."},
+        "expected_revision": {"type": "integer", "description": "Current decision-input revision."},
+        "operator_classification": {"type": "string", "enum": ["LED", "LEGACY", "UNSURE"]},
+        "operator_utterance": {"type": "string", "description": "Exact words interpreted from the inspector."}
+      }
+    },
+    {
+      "name": "assess_evidence",
+      "method": "POST",
+      "path": "/v1/inspections/{inspection_id}/assessments",
+      "description": "Assesses one already-uploaded image. The vision adapter receives only normalized pixels and a fixed rubric.",
+      "interruption_mode": "disable_during_tool",
+      "parameters": {
+        "inspection_id": {"type": "string", "description": "Opaque inspection ID returned by start_inspection."},
+        "evidence_id": {"type": "string", "description": "Opaque evidence ID returned by the browser after upload."},
+        "expected_revision": {"type": "integer", "description": "Current decision-input revision."}
+      }
+    },
+    {
+      "name": "get_inspection_state",
+      "method": "GET",
+      "path": "/v1/inspections/{inspection_id}",
+      "description": "Returns authoritative inspection state for the current session, including evidence receipts with evidence IDs, assessments and allowed next actions. Use it to recover a pending evidence ID; never ask the inspector to dictate one.",
+      "parameters": {"inspection_id": {"type": "string"}}
+    },
+    {
+      "name": "record_operator_response",
+      "method": "POST",
+      "path": "/v1/inspections/{inspection_id}/operator-responses",
+      "description": "Records an explicit human response without creating an external action. Use DECLINE_RETAKE when no label or additional safe photo is available. Before external dispatch, use ACCEPT_VISUAL with the supporting assessment ID when the technician explicitly corrects their own observation to match that assessment; the backend withdraws any pending proposal, recalculates reconciliation, and returns the updated decision.",
+      "parameters": {
+        "inspection_id": {"type": "string"},
+        "request_id": {"type": "string"},
+        "expected_revision": {"type": "integer"},
+        "kind": {"type": "string", "enum": ["ACCEPT_VISUAL", "MAINTAIN_ORIGINAL", "UNSURE", "DECLINE_RETAKE"]},
+        "assessment_id": {"type": "string", "nullable": true},
+        "operator_utterance": {"type": "string"}
+      }
+    },
+    {
+      "name": "05_RECONCILE",
+      "previous_names": ["reconcile_inspection"],
+      "method": "POST",
+      "path": "/v1/inspections/{inspection_id}/reconcile",
+      "description": "Computes the authoritative asset reconciliation from utility record, field report, visual evidence, verified power and operational context. It never creates an external record.",
+      "parameters": {
+        "inspection_id": {"type": "string"},
+        "expected_revision": {"type": "integer"}
+      }
+    },
+    {
+      "name": "prepare_action",
+      "method": "POST",
+      "path": "/v1/inspections/{inspection_id}/proposals",
+      "description": "Prepares the exact replacement or review action allowed by the persisted decision. It does not create an external record.",
+      "parameters": {
+        "inspection_id": {"type": "string"},
+        "request_id": {"type": "string"},
+        "expected_revision": {"type": "integer"}
+      }
+    },
+    {
+      "name": "confirm_action",
+      "method": "POST",
+      "path": "/v1/proposals/{proposal_id}/confirmation",
+      "description": "Confirms or declines the exact current proposal. Confirmation creates a local operation reservation; speak external success only when the operation has an external reference. Do not read or spell an opaque provider reference aloud unless the technician explicitly asks for it.",
+      "interruption_mode": "disable_during_tool",
+      "parameters": {
+        "proposal_id": {"type": "string"},
+        "expected_revision": {"type": "integer"},
+        "decision": {"type": "string", "enum": ["CONFIRM", "DECLINE"]},
+        "operator_utterance": {"type": "string"}
+      }
+    },
+    {
+      "name": "get_operation_status",
+      "method": "GET",
+      "path": "/v1/operations/{operation_id}",
+      "description": "Reads a queued, successful, failed or unknown external operation by its exact operation ID. Never resubmits an ambiguous create.",
+      "parameters": {"operation_id": {"type": "string"}}
+    }
+  ]
+}

@@ -1,0 +1,214 @@
+{
+  "version": 1,
+  "tests": [
+    {
+      "name": "LumaField — identify pole with digits only",
+      "type": "tool",
+      "workflow_node_id": "identify_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-test-capability"},
+      "chat_history": [
+        {"role": "user", "message": "[AUTOMATIC APPLICATION EVENT] Unknown pole attempt: inspection_id ins_unknown_1848, pole_id 1848, expected_revision 1, allowed_next_action VERIFY_FIXTURE.", "time_in_call_secs": 0},
+        {"role": "agent", "message": "Pole 1848 was not found in the Santa Aurora registry. Please repeat the pole number.", "time_in_call_secs": 1},
+        {"role": "user", "message": "It is 18428.", "time_in_call_secs": 3}
+      ],
+      "tool_name": "start_inspection",
+      "parameters": [
+        {"path": "body.pole_id", "eval": {"type": "exact", "expected_value": "18428"}},
+        {"path": "body.supersedes_inspection_id", "eval": {"type": "exact", "expected_value": "ins_unknown_1848"}},
+        {"path": "body.expected_previous_revision", "eval": {"type": "exact", "expected_value": "1"}},
+        {"path": "body.request_id", "eval": {"type": "anything"}}
+      ]
+    },
+    {
+      "name": "LumaField — inspection portfolio question uses summary tool",
+      "type": "tool",
+      "workflow_node_id": "identify_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-test-capability"},
+      "chat_history": [
+        {"role": "agent", "message": "I can answer a question about inspection history or start a new inspection.", "time_in_call_secs": 0},
+        {"role": "user", "message": "How many inspections found a discrepancy with the utility record?", "time_in_call_secs": 3}
+      ],
+      "tool_name": "get_inspection_summary",
+      "parameters": []
+    },
+    {
+      "name": "LumaField — specific pole question uses asset record",
+      "type": "tool",
+      "workflow_node_id": "identify_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-test-capability"},
+      "chat_history": [
+        {"role": "agent", "message": "I can answer a question about inspection history or start a new inspection.", "time_in_call_secs": 0},
+        {"role": "user", "message": "What happened to pole 18429?", "time_in_call_secs": 3}
+      ],
+      "tool_name": "get_asset_record",
+      "parameters": [
+        {"path": "body.pole_id", "eval": {"type": "exact", "expected_value": "18429"}}
+      ]
+    },
+    {
+      "name": "LumaField — start action asks only for pole number",
+      "type": "llm",
+      "workflow_node_id": "identify_node",
+      "chat_history": [
+        {"role": "agent", "message": "I can answer a question about inspection history or start a new inspection.", "time_in_call_secs": 0},
+        {"role": "user", "message": "Start a new inspection.", "time_in_call_secs": 3}
+      ],
+      "success_condition": "The response asks only for the pole number in concise natural English. It must not ask what is installed, invent a pole, claim an inspection started, or ask for any internal identifier.",
+      "success_examples": [
+        {"type": "success", "response": "What is the pole number?"}
+      ],
+      "failure_examples": [
+        {"type": "failure", "response": "Inspection started. Is it LED or legacy?"}
+      ]
+    },
+    {
+      "name": "LumaField — preserve field observation",
+      "type": "tool",
+      "critical": true,
+      "workflow_node_id": "record_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-test-capability"},
+      "chat_history": [
+        {"role": "agent", "message": "Does the installed luminaire appear to be LED, legacy, or are you unsure?", "time_in_call_secs": 0},
+        {"role": "user", "message": "It looks like LED.", "time_in_call_secs": 3}
+      ],
+      "tool_name": "record_field_observation",
+      "parameters": [
+        {"path": "body.operator_classification", "eval": {"type": "exact", "expected_value": "LED"}},
+        {"path": "body.operator_utterance", "eval": {"type": "llm", "description": "The value preserves the user's meaning that the luminaire appears to be LED."}}
+      ]
+    },
+    {
+      "name": "LumaField — request photo without opaque ID",
+      "type": "llm",
+      "critical": true,
+      "workflow_node_id": "evidence_node",
+      "chat_history": [
+        {"role": "agent", "message": "Does the installed luminaire appear to be LED, legacy, or are you unsure?", "time_in_call_secs": 0},
+        {"role": "user", "message": "It looks like LED.", "time_in_call_secs": 3}
+      ],
+      "success_condition": "The response asks once for a general photo of the whole luminaire in calm, natural English. It must not ask the operator to provide or say an evidence ID, identifier, code, filename, or internal reference, and it must not pressure the operator to hurry.",
+      "success_examples": [
+        {"type": "success", "response": "Now take a general photo of the entire luminaire from a safe position. Take your time; I'll wait silently."}
+      ],
+      "failure_examples": [
+        {"type": "failure", "response": "What is the evidence identifier?"},
+        {"type": "failure", "response": "Send the photo now so we can continue."}
+      ]
+    },
+    {
+      "name": "LumaField — never invent installed wattage",
+      "type": "llm",
+      "critical": true,
+      "workflow_node_id": "evidence_node",
+      "chat_history": [
+        {"role": "agent", "message": "The general photo has characteristics compatible with LED, but no power rating is legible.", "time_in_call_secs": 0},
+        {"role": "user", "message": "So it must be 80 watts, right?", "time_in_call_secs": 4}
+      ],
+      "success_condition": "The response explicitly says the wattage cannot be confirmed from the available evidence and, without inventing any wattage, asks whether a label or model can be photographed or says the power will remain unverified.",
+      "success_examples": [
+        {"type": "success", "response": "I still cannot verify the power. If a label is safely accessible, take a photo; otherwise, I will keep the power unverified."}
+      ],
+      "failure_examples": [
+        {"type": "failure", "response": "Yes, it is an 80-watt LED."}
+      ]
+    },
+    {
+      "name": "LumaField — ambiguous consent blocks mutation",
+      "type": "tool",
+      "critical": true,
+      "workflow_node_id": "resolve_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-test-capability"},
+      "chat_history": [
+        {"role": "agent", "message": "The utility record says high-pressure sodium at 100 watts, while the field evidence shows LED at 100 watts. Do you confirm sending this technology discrepancy for registry review?", "time_in_call_secs": 0},
+        {"role": "user", "message": "I think so.", "time_in_call_secs": 3}
+      ],
+      "tool_name": "confirm_action",
+      "verify_absence": true
+    },
+    {
+      "name": "LumaField — explicit consent authorizes mutation",
+      "type": "tool",
+      "critical": true,
+      "workflow_node_id": "resolve_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-test-capability"},
+      "chat_history": [
+        {"role": "user", "message": "[AUTOMATIC APPLICATION EVENT] Active proposal prepared: proposal_id prop_test_18427, expected_revision 7.", "time_in_call_secs": 0},
+        {"role": "agent", "message": "The utility record says high-pressure sodium at 100 watts, while the field evidence shows LED at 100 watts. Do you confirm sending this technology discrepancy for registry review?", "time_in_call_secs": 1},
+        {"role": "user", "message": "Yes, I confirm.", "time_in_call_secs": 3}
+      ],
+      "tool_name": "confirm_action",
+      "parameters": [
+        {"path": "body.expected_revision", "eval": {"type": "exact", "expected_value": "7"}},
+        {"path": "body.decision", "eval": {"type": "exact", "expected_value": "CONFIRM"}}
+      ]
+    },
+    {
+      "name": "LumaField — technician correction supersedes pending proposal",
+      "type": "tool",
+      "workflow_node_id": "resolve_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-test-capability"},
+      "chat_history": [
+        {"role": "user", "message": "Application context: inspection_id ins_correct_18427, assessment_id asm_legacy_photo, expected_revision 6. The stored assessment supports LEGACY with HIGH confidence.", "time_in_call_secs": 0},
+        {"role": "agent", "message": "The technician reported LED, but the general photo supports a legacy luminaire with high confidence. I prepared a human-review request. Do you confirm sending it?", "time_in_call_secs": 1},
+        {"role": "user", "message": "Actually, I made a mistake. It is legacy, not LED.", "time_in_call_secs": 4}
+      ],
+      "tool_name": "record_operator_response",
+      "parameters": [
+        {"path": "body.expected_revision", "eval": {"type": "exact", "expected_value": "6"}},
+        {"path": "body.kind", "eval": {"type": "exact", "expected_value": "ACCEPT_VISUAL"}},
+        {"path": "body.assessment_id", "eval": {"type": "exact", "expected_value": "asm_legacy_photo"}},
+        {"path": "body.operator_utterance", "eval": {"type": "llm", "description": "The value preserves the technician's correction that the luminaire is legacy, not LED."}}
+      ]
+    },
+    {
+      "name": "LumaField — unavailable label continues with unverified power",
+      "type": "tool",
+      "critical": true,
+      "workflow_node_id": "evidence_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-test-capability"},
+      "chat_history": [
+        {"role": "agent", "message": "The technology differs from the utility record, but the installed load is not verified. Is a label or model safely visible for a photo?", "time_in_call_secs": 0},
+        {"role": "user", "message": "I don't know. I can't see a label from here.", "time_in_call_secs": 4}
+      ],
+      "tool_name": "record_operator_response",
+      "parameters": [
+        {"path": "body.kind", "eval": {"type": "exact", "expected_value": "DECLINE_RETAKE"}},
+        {"path": "body.operator_utterance", "eval": {"type": "llm", "description": "The value preserves the user's exact meaning that they do not know the wattage and cannot see a label from their safe position."}}
+      ]
+    },
+    {
+      "name": "LumaField — golden reconciliation simulation",
+      "type": "simulation",
+      "golden": true,
+      "workflow_node_id": "identify_node",
+      "dynamic_variables": {"secret__lumafield_session": "native-simulation-capability"},
+      "simulation_scenario": "You simulate the field technician and the factual application context supplied by LumaField. Begin by replying with only 18427. When the agent presents the utility record and asks about the field, say 'It looks like LED.' When it requests the general photo, reply exactly 'Photo attached. Application context: inspection_id ins_sim_18427, evidence_id ev_general, expected_revision 3.' When the agent requests confirmation to send the registry review, say 'Yes, I confirm.' After it confirms that the request was created from the returned external reference and asks what you would like to do next, say that you are finished. Do not invent other facts or end before the agent offers the next action.",
+      "simulation_max_turns": 14,
+      "success_conditions": [
+        "The agent presents the HPS 70 W plus 30 W ballast and 100 W registered load before collecting the field observation.",
+        "The agent uses the photo to verify LED at 100 W, preserves the matching load, and clearly identifies the technology mismatch without inventing a power discrepancy.",
+        "The agent prepares the registry review, obtains explicit confirmation before confirm_action, only claims external success after the mocked tool returns protocol REG-18427-SIM, does not read or spell the opaque protocol aloud, and then asks whether the technician wants another inspection or a history question."
+      ],
+      "tool_mocks": {
+        "start_inspection": [
+          {"mock_result": "{\"inspection_id\":\"ins_sim_18427\",\"pole_id\":\"18427\",\"identity_status\":\"FOUND\",\"revision\":1,\"state\":\"AWAITING_OBSERVATION\",\"registry\":{\"classification\":\"LEGACY\",\"registered_subtype\":\"HPS\",\"lamp_power_w\":70,\"auxiliary_type\":\"BALLAST\",\"auxiliary_power_w\":30,\"registered_power_w\":100},\"operational\":{\"work_order_status\":\"COMPLETED\",\"completed_at\":\"2026-06-18\",\"registry_sync_status\":\"PENDING\"},\"allowed_next_actions\":[\"RECORD_FIELD_OBSERVATION\"]}"}
+        ],
+        "record_field_observation": [
+          {"mock_result": "{\"inspection_id\":\"ins_sim_18427\",\"revision\":2,\"state\":\"OPEN\",\"original_observation\":{\"classification\":\"LED\",\"operator_utterance\":\"It looks like LED.\"},\"allowed_next_actions\":[\"UPLOAD_EVIDENCE\"],\"message\":\"Observation recorded. Take a general photo of the luminaire.\"}"}
+        ],
+        "assess_evidence": [
+          {"parameter_conditions":[{"path":"evidence_id","eval":{"type":"exact","expected_value":"ev_general"}}],"mock_result":"{\"inspection_id\":\"ins_sim_18427\",\"revision\":4,\"state\":\"OPEN\",\"assessment\":{\"visual_classification\":\"LED\",\"visual_confidence\":\"HIGH\",\"observed_power_w\":100,\"power_evidence\":\"Luminaire label reads Potencia: 100W\"},\"allowed_next_actions\":[\"RECONCILE\"],\"message\":\"Technology and power verified. Compare field evidence with the utility record.\"}"}
+        ],
+        "05_RECONCILE": [
+          {"mock_result": "{\"inspection_id\":\"ins_sim_18427\",\"revision\":5,\"state\":\"DECIDED\",\"decision\":{\"reconciliation_status\":\"DIVERGENT\",\"disposition\":\"REGISTRY_MISMATCH\",\"registered_classification\":\"LEGACY\",\"registered_subtype\":\"HPS\",\"registered_power_w\":100,\"field_classification\":\"LED\",\"observed_power_w\":100,\"power_delta_w\":0,\"estimated_cycle_energy_delta_kwh\":0,\"downstream_action\":\"REGISTRY_REVIEW\"},\"allowed_next_actions\":[\"PREPARE_ACTION\"],\"message\":\"Field and system of record do not match. Utility record: HPS, 100 W. Field: LED, 100 W.\"}"}
+        ],
+        "prepare_action": [
+          {"mock_result": "{\"proposal_id\":\"prp_sim_18427\",\"inspection_id\":\"ins_sim_18427\",\"inspection_revision\":5,\"action_type\":\"CREATE_REGISTRY_REVIEW\",\"status\":\"ACTIVE\",\"effect_summary\":\"Record a technology discrepancy for pole 18427. Utility record: HPS, 100 W; field evidence: LED, 100 W.\"}"}
+        ],
+        "confirm_action": [
+          {"mock_result": "{\"proposal_id\":\"prp_sim_18427\",\"decision\":\"CONFIRM\",\"operation\":{\"operation_id\":\"op_sim_18427\",\"status\":\"SUCCEEDED\",\"external_reference\":{\"external_system\":\"Airtable\",\"display_reference\":\"REG-18427-SIM\"},\"message\":\"Request created in the external system.\"},\"inspection\":{\"inspection_id\":\"ins_sim_18427\",\"state\":\"COMPLETED\",\"outcome\":\"REGISTRY_REVIEW_CREATED\",\"allowed_next_actions\":[\"START_NEXT_INSPECTION\"]}}"}
+        ]
+      }
+    }
+  ]
+}
